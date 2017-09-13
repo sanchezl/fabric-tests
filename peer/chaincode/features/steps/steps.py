@@ -29,6 +29,23 @@ def step_impl(context):
         'docker', 'network', 'create', context.network_name
     ]).strip()
 
+    # create orderer system channel bootstrap block
+    orderer_genesis_block = os.path.join(context.scenario_temp_dir, 'genesis.block')
+    print('Orderer system channel genesis block will be written to: {0}'.format(orderer_genesis_block))
+    configtxgen_env = os.environ.copy()
+    configtxgen_env['CONFIGTX_ORDERER_ADDRESSES']='[orderer:7050]'
+    configtxgen_env['CONFIGTX_ORDERER_BATCHSIZE_MAXMESSAGECOUNT']='1'
+    configtxgen_env['CONFIGTX_ORDERER_BATCHTIMEOUT']='1s'
+    try:
+        print(subprocess.check_output([
+            context.configtxgen_exe,
+            '-profile', 'SampleDevModeSolo',
+            '-outputBlock', orderer_genesis_block,
+        ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=configtxgen_env))
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
+
     # start orderer
     context.orderer_container_id = subprocess.check_output([
         'docker', 'run', '-d', '-p', '7050',
@@ -36,8 +53,10 @@ def step_impl(context):
         '--network', context.network_name,
         '--network-alias', 'orderer',
         '--env', 'ORDERER_GENERAL_LISTENADDRESS=0.0.0.0',
-        '--env', 'CONFIGTX_ORDERER_BATCHSIZE_MAXMESSAGECOUNT=1',
-        '--env', 'CONFIGTX_ORDERER_BATCHTIMEOUT=1s',
+        '--env', 'ORDERER_GENERAL_GENESISMETHOD=file',
+        '--env', 'ORDERER_GENERAL_GENESISFILE=/var/private/orderer/genesis.block',
+        '--env', 'ORDERER_GENERAL_LOGLEVEL=debug',
+        '--volume', '{0}:/var/private/orderer/genesis.block'.format(orderer_genesis_block),
         'hyperledger/fabric-orderer'
     ]).strip()
     context.orderer_address = subprocess.check_output(['docker', 'port', context.orderer_container_id, '7050']).strip()
@@ -49,11 +68,11 @@ def step_impl(context):
         '--network-alias', 'vp0',
         '--env', 'CORE_PEER_ADDRESSAUTODETECT=true',
         '--env', 'CORE_PEER_ID=vp0',
-        '--env', 'CORE_CHAINCODE_STARTUPTIMEOUT=5000',
+        '--env', 'CORE_CHAINCODE_STARTUPTIMEOUT=300s',
         '--env', 'CORE_VM_DOCKER_ATTACHSTDOUT=true',
         '--volume', '/var/run/docker.sock:/var/run/docker.sock',
         'hyperledger/fabric-peer',
-        'peer', 'node', 'start', '--logging-level', 'debug', '--orderer', 'orderer:7050'
+        'peer', 'node', 'start', '--logging-level', 'debug', '--orderer', 'orderer:7050', '--peer-defaultchain', 'false'
     ]).strip()
     context.peer_address = subprocess.check_output(['docker', 'port', context.peer_container_id, '7051']).strip()
     time.sleep(1)
@@ -61,6 +80,52 @@ def step_impl(context):
     # setup env for peer cli commands
     context.peer_env = os.environ.copy()
     context.peer_env['CORE_PEER_ADDRESS'] = context.peer_address
+    context.peer_env['CORE_PEER_MSPCONFIGPATH'] = os.path.join(context.fabric_dir, 'sampleconfig/msp')
+    context.peer_env['CORE_PEER_LOCALMSPID'] = 'DEFAULT'
+
+    # create channel creation tx for test channel
+    context.channel_id = 'behave' + ''.join(random.choice('0123456789') for i in xrange(7))
+    channel_create_tx = os.path.join(context.scenario_temp_dir, context.channel_id + '.tx')
+    print(channel_create_tx)
+    print('The transaction to create the {0} channel will be written to: {1}'.format(context.channel_id, channel_create_tx))
+    try:
+        print(subprocess.check_output([
+            context.configtxgen_exe,
+            '-profile', 'SampleSingleMSPChannel',
+            '-channelID', context.channel_id,
+            '-outputCreateChannelTx', channel_create_tx,
+        ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=configtxgen_env))
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
+
+    # create channel
+    try:
+        print(subprocess.check_output([
+            context.peer_exe, 'channel', 'create',
+            '--logging-level', 'debug',
+            '--orderer', context.orderer_address,
+            '--channelID', context.channel_id,
+            '--file', channel_create_tx,
+        ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=context.peer_env))
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
+
+    # move genesis block to temp dir (so it will get cleanup up when we're done)
+    channel_genesis_block = os.path.join(context.scenario_temp_dir, context.channel_id + '.block')
+    os.rename(os.path.join(context.fabric_dir, context.channel_id + '.block'), channel_genesis_block)
+
+    # join peer to channel
+    try:
+        print(subprocess.check_output([
+            context.peer_exe, 'channel', 'join',
+            '--logging-level', 'debug',
+            '--blockpath', channel_genesis_block,
+        ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=context.peer_env))
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
 
 @step(r'a (?P<lang>java|go|golang|car) chaincode is installed via the CLI')
 def step_impl(context, lang):
@@ -79,8 +144,6 @@ def step_impl(context, lang):
         ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=context.peer_env))
     except subprocess.CalledProcessError as e:
         print(e.output)
-        print('CORE_PEER_ADDRESS = ' + context.peer_env['CORE_PEER_ADDRESS'])
-        print('CORE_PEER_COMMITTER_LEDGER_ORDERER = ' + context.peer_env['CORE_PEER_COMMITTER_LEDGER_ORDERER'])
         raise
 
 @step(u'the chaincode is installed on the peer')
@@ -134,6 +197,7 @@ def step_impl(context):
             context.peer_exe, 'chaincode', 'instantiate',
             '--logging-level', 'debug',
             '--orderer', context.orderer_address,
+            '--channelID', context.channel_id,
             '--name', context.chaincode_id_name,
             '--version', context.chaincode_id_version,
             '--lang', context.chaincode_lang,
@@ -149,14 +213,15 @@ def step_impl(context):
 @step(r'the chaincode is invoked successfully via the CLI')
 def step_impl(context):
     assert getattr(context, 'chaincode_id_name', None), 'No chaincode previously installed.'
+    time.sleep(2)
     try:
         print(subprocess.check_output([
             context.peer_exe, 'chaincode', 'invoke',
             '--logging-level', 'debug',
             '--orderer', context.orderer_address,
+            '--channelID', context.channel_id,
             '--name', context.chaincode_id_name,
-            '--version', context.chaincode_id_version,
-            '--lang', context.chaincode_lang,
+            # '--version', context.chaincode_id_version,
             '--ctor', context.sample_chaincode_transfer_args[context.chaincode_lang]
         ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=context.peer_env))
         context.last_function = 'invoke'
@@ -172,9 +237,9 @@ def step_impl(context):
             context.peer_exe, 'chaincode', 'query',
             '--logging-level', 'debug',
             '--orderer', context.orderer_address,
+            '--channelID', context.channel_id,
             '--name', context.chaincode_id_name,
             '--version', context.chaincode_id_version,
-            '--lang', context.chaincode_lang,
             '--ctor', context.sample_chaincode_query_args[context.chaincode_lang]
         ], cwd=context.fabric_dir, stderr=subprocess.STDOUT, env=context.peer_env)
         context.query_result = get_chaincode_query_result(query_commmand_output)

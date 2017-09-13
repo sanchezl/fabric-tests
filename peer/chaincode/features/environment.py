@@ -16,7 +16,9 @@ from behave import *
 import os
 import re
 import subprocess
+import tempfile
 import time
+import sys
 
 # set the default step matcher
 use_step_matcher("re")
@@ -26,9 +28,15 @@ def before_all(context):
     context.go_path = os.environ['GOPATH']
     context.fabric_dir = os.path.join(context.go_path, 'src/github.com/hyperledger/fabric')
     context.peer_exe = os.path.join(context.fabric_dir, 'build/bin/peer')
+    context.configtxgen_exe = os.path.join(context.fabric_dir, 'build/bin/configtxgen')
+    if sys.platform == 'darwin':
+        # on macOS, the typical value of TMPDIR is not accessible to the Docker vm.
+        context.temp_dir = tempfile.mkdtemp(dir='/tmp', prefix='behave_')
+    else:
+        context.temp_dir = tempfile.mkdtemp()
     context.sample_chaincode_path = {
         'golang':'github.com/hyperledger/fabric/examples/chaincode/go/chaincode_example02',
-        'java':'examples/chaincode/java/SimpleSample'
+        'java': os.path.join(context.fabric_dir,'examples/chaincode/java/SimpleSample'),
     }
     context.sample_chaincode_ctor_args = {
         'golang':'{"Args":["init", "a", "100", "b", "200"]}',
@@ -52,6 +60,15 @@ def before_all(context):
             'after_invoke'     : '{"Name":"a","Amount":85}'
         }
     }
+
+def before_scenario(context, scenario):
+    if not context.config.userdata.getbool('java-cc-enabled'):
+        for step in scenario.steps:
+            if "java chaincode" in step.name:
+                scenario.mark_skipped()
+                break
+    context.scenario_temp_dir = os.path.join(context.temp_dir, re.sub('\W+', '_', scenario.name).lower())
+    os.mkdir(context.scenario_temp_dir)
 
 def after_scenario(context, scenario):
     # collect logs if failure or user specified
