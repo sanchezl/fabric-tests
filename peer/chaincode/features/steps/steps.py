@@ -72,7 +72,7 @@ def step_impl(context):
         '--env', 'CORE_VM_DOCKER_ATTACHSTDOUT=true',
         '--volume', '/var/run/docker.sock:/var/run/docker.sock',
         'hyperledger/fabric-peer',
-        'peer', 'node', 'start', '--logging-level', 'debug', '--orderer', 'orderer:7050', '--peer-defaultchain', 'false'
+        'peer', 'node', 'start', '--logging-level', 'debug', '--orderer', 'orderer:7050',
     ]).strip()
     context.peer_address = subprocess.check_output(['docker', 'port', context.peer_container_id, '7051']).strip()
     time.sleep(1)
@@ -232,6 +232,7 @@ def step_impl(context):
 @step(r'the chaincode state is queried via the CLI')
 def step_impl(context):
     assert getattr(context, 'chaincode_id_name', None), 'No chaincode previously installed.'
+    time.sleep(2)
     try:
         query_commmand_output = subprocess.check_output([
             context.peer_exe, 'chaincode', 'query',
