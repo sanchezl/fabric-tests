@@ -57,7 +57,7 @@ def step_impl(context):
         '--env', 'ORDERER_GENERAL_GENESISFILE=/var/private/orderer/genesis.block',
         '--env', 'ORDERER_GENERAL_LOGLEVEL=debug',
         '--volume', '{0}:/var/private/orderer/genesis.block'.format(orderer_genesis_block),
-        'hyperledger/fabric-orderer'
+        'hyperledger/fabric-orderer:{}'.format(context.docker_tag['orderer'])
     ]).strip()
     context.orderer_address = subprocess.check_output(['docker', 'port', context.orderer_container_id, '7050']).strip()
 
@@ -71,7 +71,7 @@ def step_impl(context):
         '--env', 'CORE_CHAINCODE_STARTUPTIMEOUT=300s',
         '--env', 'CORE_VM_DOCKER_ATTACHSTDOUT=true',
         '--volume', '/var/run/docker.sock:/var/run/docker.sock',
-        'hyperledger/fabric-peer',
+        'hyperledger/fabric-peer:{}'.format(context.docker_tag['peer']),
         'peer', 'node', 'start', '--logging-level', 'debug', '--orderer', 'orderer:7050',
     ]).strip()
     context.peer_address = subprocess.check_output(['docker', 'port', context.peer_container_id, '7051']).strip()

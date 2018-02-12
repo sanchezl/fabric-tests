@@ -29,6 +29,20 @@ def before_all(context):
     context.fabric_dir = os.path.join(context.go_path, 'src/github.com/hyperledger/fabric')
     context.peer_exe = os.path.join(context.fabric_dir, 'build/bin/peer')
     context.configtxgen_exe = os.path.join(context.fabric_dir, 'build/bin/configtxgen')
+    # docker tags for the various images
+    context.docker_tag = {}
+    if 'fabric-docker-tag' in context.config.userdata:
+        context.docker_tag['fabric'] = context.config.userdata['fabric-docker-tag']
+    else:
+        context.docker_tag['fabric'] = 'latest'
+    if 'fabric-peer-docker-tag' in context.config.userdata:
+        context.docker_tag['peer'] = context.docker_tag['fabric']
+    else:
+        context.docker_tag['peer'] = 'latest'
+    if 'fabric-orderer-docker-tag' in context.config.userdata:
+        context.docker_tag['orderer'] = context.config.userdata['fabric-orderer-docker-tag']
+    else:
+        context.docker_tag['orderer'] = context.docker_tag['fabric']
     if sys.platform == 'darwin':
         # on macOS, the typical value of TMPDIR is not accessible to the Docker vm.
         context.temp_dir = tempfile.mkdtemp(dir='/tmp', prefix='behave_')
