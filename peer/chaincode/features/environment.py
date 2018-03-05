@@ -31,18 +31,18 @@ def before_all(context):
     context.configtxgen_exe = os.path.join(context.fabric_dir, 'build/bin/configtxgen')
     # docker tags for the various images
     context.docker_tag = {}
+    context.docker_tag['fabric'] = 'latest'
     if 'fabric-docker-tag' in context.config.userdata:
         context.docker_tag['fabric'] = context.config.userdata['fabric-docker-tag']
-    else:
-        context.docker_tag['fabric'] = 'latest'
+    context.docker_tag['peer'] = context.docker_tag['fabric']
+    context.docker_tag['orderer'] = context.docker_tag['fabric']
+    context.docker_tag['tools'] = context.docker_tag['fabric']
     if 'fabric-peer-docker-tag' in context.config.userdata:
-        context.docker_tag['peer'] = context.docker_tag['fabric']
-    else:
         context.docker_tag['peer'] = 'latest'
     if 'fabric-orderer-docker-tag' in context.config.userdata:
         context.docker_tag['orderer'] = context.config.userdata['fabric-orderer-docker-tag']
-    else:
-        context.docker_tag['orderer'] = context.docker_tag['fabric']
+    if 'fabric-tools-docker-tag' in context.config.userdata:
+        context.docker_tag['tools'] = context.config.userdata['fabric-tools-docker-tag']
     if sys.platform == 'darwin':
         # on macOS, the typical value of TMPDIR is not accessible to the Docker vm.
         context.temp_dir = tempfile.mkdtemp(dir='/tmp', prefix='behave_')
