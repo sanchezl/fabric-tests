@@ -27,8 +27,6 @@ def before_all(context):
     # set some handy values
     context.go_path = os.environ['GOPATH']
     context.fabric_dir = os.path.join(context.go_path, 'src/github.com/hyperledger/fabric')
-    context.peer_exe = os.path.join(context.fabric_dir, 'build/bin/peer')
-    context.configtxgen_exe = os.path.join(context.fabric_dir, 'build/bin/configtxgen')
     # docker tags for the various images
     context.docker_tag = {}
     context.docker_tag['fabric'] = 'latest'

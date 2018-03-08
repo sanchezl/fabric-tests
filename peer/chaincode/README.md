@@ -3,16 +3,13 @@
 ## Before You Begin
 
 * `GOPATH` must be defined.
-* Fabric source code must be located at `${GOPATH}/src/github.com/hyperledger/fabric` in order to provide:
-  * Native executables (see below).
-  * Example chaincode:
+* Fabric source code must be located at `${GOPATH}/src/github.com/hyperledger/fabric` in order to provide the example chaincode used in the tests, specifically:
     * `fabric/examples/chaincode/go/chaincode_example02`
     * `fabric/examples/chaincode/java/SimpleSample`
 
-  * Sample configuration (`fabric/sampleconfig`).
-* The fabric `make native docker` targets must be built in order to create the following:
-  * Native `peer` executable.
-  * Native `configtxgen` executable.
+* By default, the tests attempt to use docker images tagged as `latest`, which
+  can be built using `make docker`. The default images used are:
+  * Docker image tagged `hyperledger/fabric-tools:latest`.
   * Docker image tagged `hyperledger/fabric-orderer:latest`.
   * Docker image tagged `hyperledger/fabric-peer:latest`.
 
@@ -20,6 +17,19 @@
 
 ```
 behave
+```
+
+### Specify Docker Images
+
+Usually the tests will run with Fabric docker images tagged as `latest`. This is
+great for testing a locally built Fabric. If for whatever reason, you need to
+run against a specific docker tag, define the `fabric-docker-tag` property on
+the behave command line when running the tests.
+
+For example:
+
+```
+behave --define fabric-docker-tag=x86_64-1.1.0'
 ```
 
 ### Enable Java Chaincode Tests
